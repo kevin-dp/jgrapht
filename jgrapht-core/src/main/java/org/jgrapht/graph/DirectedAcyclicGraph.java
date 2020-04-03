@@ -70,7 +70,7 @@ public class DirectedAcyclicGraph<V, E>
     private static final String EDGE_WOULD_INDUCE_A_CYCLE = "Edge would induce a cycle";
 
     private final Comparator<V> topoComparator;
-    public final TopoOrderMap<V> topoOrderMap;
+    private final TopoOrderMap<V> topoOrderMap;
     private Region affectedRegion;
 
     // this update count is used to keep internal topological iterators honest
@@ -355,13 +355,40 @@ public class DirectedAcyclicGraph<V, E>
         return new TopoIterator();
     }
 
-
     /**
      * Returns the region affected by the last edge that was added.
      *
      * @return the affected region
      */
     public Region getAffectedRegion() { return affectedRegion; }
+
+    /**
+     * Get the vertex at the given topological index.
+     *
+     * @param index the topological index
+     * @return vertex the vertex
+     */
+    public V getVertex(Integer index) {
+        return topoOrderMap.getVertex(index);
+    }
+
+    /**
+     * Get the topological index of the given vertex.
+     *
+     * @param vertex the vertex
+     * @return the index that the vertex is at, or null if the vertex isn't in the topological
+     *         ordering
+     */
+    public Integer getTopologicalIndex(V vertex) {
+        return topoOrderMap.getTopologicalIndex(vertex);
+    }
+
+    /**
+     * @return Size of the topological order.
+     */
+    public Integer size() {
+        return topoOrderMap.size();
+    }
 
     /**
      * Update as if a new edge is added.
