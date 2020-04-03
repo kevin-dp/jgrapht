@@ -70,9 +70,8 @@ public class DirectedAcyclicGraph<V, E>
     private static final String EDGE_WOULD_INDUCE_A_CYCLE = "Edge would induce a cycle";
 
     private final Comparator<V> topoComparator;
-    private final TopoOrderMap<V> topoOrderMap;
-    private int maxTopoIndex = 0;
-    private int minTopoIndex = 0;
+    public final TopoOrderMap<V> topoOrderMap;
+    private Region affectedRegion;
 
     // this update count is used to keep internal topological iterators honest
     private transient long topoModCount = 0;
@@ -207,8 +206,7 @@ public class DirectedAcyclicGraph<V, E>
 
         if (v != null) {
             // add to the topological map
-            ++maxTopoIndex;
-            topoOrderMap.putVertex(maxTopoIndex, v);
+            topoOrderMap.putVertex(topoOrderMap.size() + 1, v);
             ++topoModCount;
         }
 
@@ -222,8 +220,7 @@ public class DirectedAcyclicGraph<V, E>
 
         if (added) {
             // add to the topological map
-            ++maxTopoIndex;
-            topoOrderMap.putVertex(maxTopoIndex, v);
+            topoOrderMap.putVertex(topoOrderMap.size() + 1, v);
             ++topoModCount;
         }
 
@@ -240,22 +237,7 @@ public class DirectedAcyclicGraph<V, E>
              * Depending on the topoOrderMap implementation, this can leave holes in the topological
              * ordering, which can degrade performance for certain operations over time.
              */
-            Integer topoIndex = topoOrderMap.removeVertex(v);
-
-            // if possible contract minTopoIndex
-            if (topoIndex == minTopoIndex) {
-                while ((minTopoIndex < 0) && (topoOrderMap.getVertex(minTopoIndex) == null)) {
-                    ++minTopoIndex;
-                }
-            }
-
-            // if possible contract maxTopoIndex
-            if (topoIndex == maxTopoIndex) {
-                while ((maxTopoIndex > 0) && (topoOrderMap.getVertex(maxTopoIndex) == null)) {
-                    --maxTopoIndex;
-                }
-            }
-
+            topoOrderMap.removeVertex(v);
             ++topoModCount;
         }
 
@@ -373,6 +355,14 @@ public class DirectedAcyclicGraph<V, E>
         return new TopoIterator();
     }
 
+
+    /**
+     * Returns the region affected by the last edge that was added.
+     *
+     * @return the affected region
+     */
+    public Region getAffectedRegion() { return affectedRegion; }
+
     /**
      * Update as if a new edge is added.
      *
@@ -390,7 +380,7 @@ public class DirectedAcyclicGraph<V, E>
             Set<V> db = new HashSet<>();
 
             // discovery
-            Region affectedRegion = new Region(lb, ub);
+            affectedRegion = new Region(lb, ub);
             VisitedStrategy visited = visitedStrategyFactory.getVisitedStrategy(affectedRegion);
 
             // throws CycleFoundException if there is a cycle
@@ -402,6 +392,9 @@ public class DirectedAcyclicGraph<V, E>
              * if we do a reorder, then the topology has been updated
              */
             ++topoModCount;
+        }
+        else {
+            affectedRegion = null;
         }
     }
 
@@ -583,7 +576,7 @@ public class DirectedAcyclicGraph<V, E>
      *
      * @author Peter Giles
      */
-    protected interface TopoOrderMap<V>
+    public interface TopoOrderMap<V>
         extends
         Serializable
     {
@@ -625,6 +618,11 @@ public class DirectedAcyclicGraph<V, E>
          * Remove all vertices from the topological ordering.
          */
         void removeAllVertices();
+
+        /**
+         * Number of vertices in the topological order.
+         */
+        Integer size();
     }
 
     /**
@@ -729,7 +727,14 @@ public class DirectedAcyclicGraph<V, E>
         {
             Integer topoIndex = vertexToTopo.remove(vertex);
             if (topoIndex != null) {
-                topoToVertex.remove(topoIndex);
+                // Shift all the vertices that follow the removed vertex one position to the left (thereby overriding the removed vertex)
+                for (var i = topoIndex+1; i <= topoToVertex.size(); i++) {
+                    V vtx = topoToVertex.get(i);
+                    topoToVertex.put(i-1, vtx);
+                    vertexToTopo.put(vtx, i-1);
+                }
+                // Delete the last entry which is now duplicated since we also moved it to the left
+                topoToVertex.remove(topoToVertex.size());
             }
             return topoIndex;
         }
@@ -739,6 +744,12 @@ public class DirectedAcyclicGraph<V, E>
         {
             vertexToTopo.clear();
             topoToVertex.clear();
+        }
+
+        @Override
+        public Integer size()
+        {
+            return topoToVertex.size();
         }
     }
 
@@ -821,6 +832,12 @@ public class DirectedAcyclicGraph<V, E>
                 return 2 * index;
             }
             return -1 * ((index * 2) - 1);
+        }
+
+        @Override
+        public Integer size()
+        {
+            return vertexToTopo.size();
         }
     }
 
@@ -1208,7 +1225,7 @@ public class DirectedAcyclicGraph<V, E>
 
         public TopoIterator()
         {
-            currentTopoIndex = minTopoIndex - 1;
+            currentTopoIndex = 0;
         }
 
         @Override
@@ -1259,12 +1276,12 @@ public class DirectedAcyclicGraph<V, E>
 
         private Integer getNextIndex()
         {
-            for (int i = currentTopoIndex + 1; i <= maxTopoIndex; i++) {
-                if (topoOrderMap.getVertex(i) != null) {
-                    return i;
-                }
+            if (currentTopoIndex + 1 <= topoOrderMap.size()) {
+                return currentTopoIndex + 1;
             }
-            return null;
+            else {
+                return null;
+            }
         }
     }
 }
